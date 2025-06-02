@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Indexed Color Image Compressor</title>
+</head>
+<body>
+    <h2>Indexed Color Image Compressor</h2>
+    <form id="inputForm">
+		<textarea id="inputMatrix" rows="10" cols="80" placeholder="Enter tab-delimited string"></textarea>
+        <button type="submit">Encode</button>
+    </form>
+    <h3>Compressed Output:</h3>
+    <textarea id="output" rows="10" cols="80"></textarea>
+
+    <script>
+        // up to 16 colors (0-15) are allowed
+		const charMapping = {
+			'B' : 0, 	// black
+			'C' : 1, 	// blue
+			'D' : 2, 	// dark brown
+			'L' : 3,	// light brown
+			'M' : 4,	// medium brown
+			'O' : 5,	// orange
+			'R' : 6,	// red
+			'W' : 7,	// white
+			'Y' : 8		// yellow
+        };
+
+        document.getElementById('inputForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const inputText = document.getElementById('inputMatrix').value.trim();
+            const rows = inputText.split('\n').map(line => line.split('\t'));
+            const numRows = rows.length;
+            const numCols = rows[0].length;
+
+            // Convert to column-first matrix
+            let columnMatrix = [];
+            for (let col = 0; col < numCols; col++) {
+                let column = [];
+                for (let row = 0; row < numRows; row++) {
+                    column.push(rows[row][col]);
+                }
+                // Flip every other column
+                if (col % 2 === 1) {
+                    column.reverse();
+                }
+                columnMatrix.push(column);
+            }
+
+            const encodedValues = columnMatrix.flat()
+											  .map(
+												char => charMapping[char.toUpperCase()]
+											  );
+
+            // Walk over the entire bitmap and apply very simplistic compression. 
+			// Each time an entry is the same as the previous, increment a counter.
+			// When the color changes or the counter hits 15 store a new entry in
+			// the compressed array and reset the counter. Each entry is treated as
+			// an 8bit unsigned integer (which is how the Arduino loads it). For each
+			// 8bit integer, the high nibble is the color index, and the low nibble is how many
+			// times that color repeats
+            let compressed = [];
+            let i = 0;
+            while (i < encodedValues.length) {
+                let color = encodedValues[i];
+                let count = 1;
+                while (i + count < encodedValues.length && encodedValues[i + count] === color && count < 15) {
+                    count++;
+                }
+                compressed.push((count << 4) | (color & 0x0F));
+                i += count;
+            }
+			
+			 // Prepend total number of elements in compressed array.
+			 // Here in JS this number could easily be a single Number in 
+			 // the array. However the bitmap array in Arduino code are
+			 // 8bit unsigned integers, and so we need to store it as 2 entries (2 bytes)
+            const totalElements = compressed.length;
+            const highByte = (totalElements >> 8) & 0xFF;
+            const lowByte = totalElements & 0xFF;
+            compressed.unshift(lowByte);
+            compressed.unshift(highByte);
+
+			// write final result as a comma-delimited string
+            document.getElementById('output').value = compressed.join(',');
+        });
+    </script>
+</body>
+</html>
